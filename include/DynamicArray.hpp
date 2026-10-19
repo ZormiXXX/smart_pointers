@@ -3,6 +3,8 @@
 #include "IEnumerator.hpp"
 #include "UnqPtr.hpp"
 
+#include <utility>
+
 template<class T>
 class DynamicArray {
 private:
@@ -18,7 +20,7 @@ private:
 
         UnqPtr<T[]> newData(new T[newCapacity]);
         for (int i = 0; i < size; i++) {
-            newData[i] = data[i];
+            newData[i] = std::move_if_noexcept(data[i]);
         }
         data = std::move(newData);
         capacity = newCapacity;
@@ -149,22 +151,22 @@ public:
         EnsureCapacity(minCapacity);
     }
 
-    void Append(const T& value) {
+    void Append(T value) {
         EnsureCapacity(size + 1);
-        data[size] = value;
+        data[size] = std::move(value);
         size++;
     }
 
-    void InsertAt(int index, const T& value) {
+    void InsertAt(int index, T value) {
         if (index < 0 || index > size) {
             throw IndexOutOfRange(index, size);
         }
 
         EnsureCapacity(size + 1);
         for (int i = size; i > index; i--) {
-            data[i] = data[i - 1];
+            data[i] = std::move(data[i - 1]);
         }
-        data[index] = value;
+        data[index] = std::move(value);
         size++;
     }
 

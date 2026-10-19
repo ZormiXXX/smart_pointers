@@ -5,6 +5,7 @@
 #include "ShrdPtr.hpp"
 
 #include <cstddef>
+#include <compare>
 #include <limits>
 
 template <class T> class MemorySpan;
@@ -23,7 +24,22 @@ public:
         return &operator*();
     }
     MsPtr &operator++();
+    MsPtr &operator--();
+    MsPtr operator++(int) {
+        MsPtr previous(*this);
+        ++(*this);
+        return previous;
+    }
+    MsPtr operator--(int) {
+        MsPtr previous(*this);
+        --(*this);
+        return previous;
+    }
+    MsPtr &operator+=(std::ptrdiff_t offset);
+    MsPtr &operator-=(std::ptrdiff_t offset);
     MsPtr operator+(std::ptrdiff_t offset) const;
+    MsPtr operator-(std::ptrdiff_t offset) const;
+    T &operator[](std::ptrdiff_t offset) const;
     std::ptrdiff_t operator-(const MsPtr &other) const;
 
     bool operator==(const MsPtr &other) const noexcept {
@@ -31,6 +47,12 @@ public:
     }
     bool operator!=(const MsPtr &other) const noexcept {
         return !(*this == other);
+    }
+
+    std::strong_ordering operator<=>(const MsPtr &other) const {
+        if (owner_ != other.owner_)
+            throw InvalidArgument("cannot order MsPtr values from different MemorySpan objects");
+        return index_ <=> other.index_;
     }
 };
 
@@ -72,6 +94,22 @@ public:
         return MsPtr<T>(this, index);
     }
 
+    MsPtr<T> Begin() {
+        return MsPtr<T>(this, 0);
+    }
+
+    MsPtr<T> End() {
+        return MsPtr<T>(this, size());
+    }
+
+    MsPtr<T> begin() {
+        return Begin();
+    }
+
+    MsPtr<T> end() {
+        return End();
+    }
+
     T &at(std::size_t index) {
         check(index);
         return data_[static_cast<int>(index)];
@@ -85,21 +123,48 @@ template <class T> T &MsPtr<T>::operator*() const {
 }
 
 template <class T> MsPtr<T> &MsPtr<T>::operator++() {
-    if (!owner_ || owner_->size() == 0 || index_ >= owner_->size() - 1)
-        throw InvalidState("MsPtr increment out of range");
+    if (!owner_ || index_ >= owner_->size())
+        throw InvalidState("MsPtr increment past end");
     ++index_;
     return *this;
 }
 
+template <class T> MsPtr<T> &MsPtr<T>::operator--() {
+    if (!owner_ || index_ == 0)
+        throw InvalidState("MsPtr decrement before begin");
+    --index_;
+    return *this;
+}
+
+template <class T> MsPtr<T> &MsPtr<T>::operator+=(std::ptrdiff_t offset) {
+    *this = *this + offset;
+    return *this;
+}
+
+template <class T> MsPtr<T> &MsPtr<T>::operator-=(std::ptrdiff_t offset) {
+    *this = *this - offset;
+    return *this;
+}
+
 template <class T> MsPtr<T> MsPtr<T>::operator+(std::ptrdiff_t offset) const {
-    if (!owner_ || owner_->size() == 0)
+    if (!owner_ || index_ > owner_->size())
         throw InvalidState("invalid MsPtr");
     const auto current = static_cast<std::ptrdiff_t>(index_);
-    const auto last = static_cast<std::ptrdiff_t>(owner_->size() - 1);
+    const auto last = static_cast<std::ptrdiff_t>(owner_->size());
     if (offset < -current || offset > last - current)
         throw InvalidState("MsPtr arithmetic out of range");
     const auto next = current + offset;
     return MsPtr(owner_, static_cast<std::size_t>(next));
+}
+
+template <class T> MsPtr<T> MsPtr<T>::operator-(std::ptrdiff_t offset) const {
+    if (offset == std::numeric_limits<std::ptrdiff_t>::min())
+        throw InvalidState("MsPtr arithmetic out of range");
+    return *this + (-offset);
+}
+
+template <class T> T &MsPtr<T>::operator[](std::ptrdiff_t offset) const {
+    return *(*this + offset);
 }
 
 template <class T> std::ptrdiff_t MsPtr<T>::operator-(const MsPtr &other) const {

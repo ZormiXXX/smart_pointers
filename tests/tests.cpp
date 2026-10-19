@@ -2,6 +2,7 @@
 #include <cassert>
 #include <iostream>
 #include <limits>
+#include <type_traits>
 
 struct Tracked {
     static inline int alive = 0;
@@ -48,6 +49,19 @@ struct PlainDerived : FirstBase, PlainBase {
         ++destroyed;
     }
 };
+
+struct ArrayBase {};
+
+struct ArrayDerived : ArrayBase {
+    static inline int destroyed = 0;
+    ~ArrayDerived() {
+        ++destroyed;
+    }
+};
+
+static_assert(std::is_constructible_v<UnqPtr<ArrayBase[]>, ArrayBase *>);
+static_assert(!std::is_constructible_v<UnqPtr<ArrayBase[]>, ArrayDerived *>);
+static_assert(std::is_constructible_v<UnqPtr<ArrayDerived[]>, ArrayDerived *>);
 
 template <class T> static void move_assign_to_self(T &value) {
     T *volatile alias = &value;
@@ -110,6 +124,18 @@ static void test_unique_polymorphic_delete_without_virtual_destructor() {
         assert(!derived);
     }
     assert(PlainBase::destroyed == 1);
+}
+
+static void test_unique_array_deletes_correct_element_type() {
+    ArrayDerived::destroyed = 0;
+    {
+        UnqPtr<ArrayDerived[]> values(new ArrayDerived[3]);
+        assert(values);
+        values.reset(values.get());
+        values.reset(nullptr);
+        assert(!values);
+    }
+    assert(ArrayDerived::destroyed == 3);
 }
 
 static void test_shared_descriptors() {
@@ -209,6 +235,23 @@ static void test_memory_span_zero_and_all_boundaries() {
     auto last = values.Locate(1);
     assert(*(first + 0) == 7 && *(last + 0) == 9);
     assert(*(last + -1) == 7 && last - first == 1);
+    assert(first < last && last > first && first <= last && last >= first);
+    assert(first[1] == 9);
+    first += 1;
+    assert(first == last);
+    first -= 1;
+    assert(first == values.Begin());
+    auto end = values.End();
+    assert(end - first == 2 && end > last);
+    --end;
+    assert(end == last);
+    ++end;
+    assert(end == values.end());
+
+    int visited = 0;
+    for (auto it = values.begin(); it != values.end(); ++it)
+        visited += *it;
+    assert(visited == 16);
 
     caught = false;
     try {
@@ -220,7 +263,15 @@ static void test_memory_span_zero_and_all_boundaries() {
 
     caught = false;
     try {
-        ++last;
+        ++end;
+    } catch (const InvalidState &) {
+        caught = true;
+    }
+    assert(caught);
+
+    caught = false;
+    try {
+        --first;
     } catch (const InvalidState &) {
         caught = true;
     }
@@ -289,12 +340,24 @@ static void test_dynamic_array_uses_unique_array_ownership() {
         assert(moved[0]->value == 101 && moved[1]->value == 202);
     }
     assert(Tracked::alive == 0);
+
+    {
+        DynamicArray<UnqPtr<Tracked>> owners;
+        for (int i = 0; i < 10; ++i)
+            owners.Append(make_unq<Tracked>(i));
+        assert(owners.GetSize() == 10 && owners.GetCapacity() >= 10);
+        owners.InsertAt(5, make_unq<Tracked>(55));
+        assert(owners.GetSize() == 11 && owners[5]->value == 55);
+        assert(owners[6]->value == 5);
+    }
+    assert(Tracked::alive == 0);
 }
 
 int main() {
     test_unique_lifetime();
     test_unique_empty_release_reset_and_assignment();
     test_unique_polymorphic_delete_without_virtual_destructor();
+    test_unique_array_deletes_correct_element_type();
     test_shared_descriptors();
     test_shared_empty_copy_move_and_reset();
     test_polymorphic_destruction();

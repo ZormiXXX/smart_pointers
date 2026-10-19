@@ -141,7 +141,9 @@ template <class T> class UnqPtr<T[]> {
 
 public:
     UnqPtr() noexcept = default;
-    explicit UnqPtr(T *data) noexcept : data_(data) {}
+
+    template <class U> requires std::is_same_v<U, T>
+    explicit UnqPtr(U *data) noexcept : data_(data) {}
 
     ~UnqPtr() {
         delete[] data_;
@@ -176,10 +178,20 @@ public:
         return std::exchange(data_, nullptr);
     }
 
-    void reset(T *data = nullptr) noexcept {
+    void reset() noexcept {
+        delete[] data_;
+        data_ = nullptr;
+    }
+
+    template <class U> requires std::is_same_v<U, T>
+    void reset(U *data) noexcept {
         if (data_ != data) {
             delete[] data_;
             data_ = data;
         }
+    }
+
+    void reset(std::nullptr_t) noexcept {
+        reset();
     }
 };
