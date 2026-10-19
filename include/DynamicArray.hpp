@@ -1,11 +1,12 @@
 #pragma once
 #include "Exceptions.hpp"
 #include "IEnumerator.hpp"
+#include "UnqPtr.hpp"
 
 template<class T>
 class DynamicArray {
 private:
-    T* data;
+    UnqPtr<T[]> data;
     int size;
     int capacity;
 
@@ -15,12 +16,11 @@ private:
         int newCapacity = capacity == 0 ? 4 : capacity * 2;
         while (newCapacity < minCapacity) newCapacity *= 2;
 
-        T* newData = new T[newCapacity];
+        UnqPtr<T[]> newData(new T[newCapacity]);
         for (int i = 0; i < size; i++) {
             newData[i] = data[i];
         }
-        delete[] data;
-        data = newData;
+        data = std::move(newData);
         capacity = newCapacity;
     }
 
@@ -53,13 +53,13 @@ public:
         }
     };
 
-    DynamicArray() : data(nullptr), size(0), capacity(0) {}
+    DynamicArray() : data(), size(0), capacity(0) {}
 
     DynamicArray(const T* items, int count) : size(count), capacity(count) {
         if (count < 0) {
             throw IndexOutOfRange(count, 0);
         }
-        data = count > 0 ? new T[count] : nullptr;
+        data = UnqPtr<T[]>(count > 0 ? new T[count] : nullptr);
         for (int i = 0; i < count; i++) {
             data[i] = items[i];
         }
@@ -69,14 +69,14 @@ public:
         if (size < 0) {
             throw IndexOutOfRange(size, 0);
         }
-        data = size > 0 ? new T[size] : nullptr;
+        data = UnqPtr<T[]>(size > 0 ? new T[size] : nullptr);
         for (int i = 0; i < size; i++) {
             data[i] = T();
         }
     }
 
     DynamicArray(const DynamicArray<T>& other) : size(other.size), capacity(other.capacity) {
-        data = capacity > 0 ? new T[capacity] : nullptr;
+        data = UnqPtr<T[]>(capacity > 0 ? new T[capacity] : nullptr);
         for (int i = 0; i < size; i++) {
             data[i] = other.data[i];
         }
@@ -92,31 +92,25 @@ public:
         if (capacity < size) {
             capacity = size;
         }
-        data = capacity > 0 ? new T[capacity] : nullptr;
+        data = UnqPtr<T[]>(capacity > 0 ? new T[capacity] : nullptr);
         for (int i = 0; i < size; i++) {
             data[i] = other.data[i];
         }
     }
 
     DynamicArray(DynamicArray<T>&& other) noexcept
-        : data(other.data), size(other.size), capacity(other.capacity) {
-        other.data = nullptr;
+        : data(std::move(other.data)), size(other.size), capacity(other.capacity) {
         other.size = 0;
         other.capacity = 0;
     }
 
-    ~DynamicArray() {
-        delete[] data;
-    }
-
     DynamicArray<T>& operator=(const DynamicArray<T>& other) {
         if (this != &other) {
-            T* newData = other.capacity > 0 ? new T[other.capacity] : nullptr;
+            UnqPtr<T[]> newData(other.capacity > 0 ? new T[other.capacity] : nullptr);
             for (int i = 0; i < other.size; i++) {
                 newData[i] = other.data[i];
             }
-            delete[] data;
-            data = newData;
+            data = std::move(newData);
             size = other.size;
             capacity = other.capacity;
         }
@@ -125,11 +119,9 @@ public:
 
     DynamicArray<T>& operator=(DynamicArray<T>&& other) noexcept {
         if (this != &other) {
-            delete[] data;
-            data = other.data;
+            data = std::move(other.data);
             size = other.size;
             capacity = other.capacity;
-            other.data = nullptr;
             other.size = 0;
             other.capacity = 0;
         }
@@ -185,11 +177,11 @@ public:
     }
 
     T* RawData() {
-        return data;
+        return data.get();
     }
 
     const T* RawData() const {
-        return data;
+        return data.get();
     }
 
     IEnumerator<T>* GetEnumerator() const {

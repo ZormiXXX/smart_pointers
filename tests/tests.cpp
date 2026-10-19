@@ -253,6 +253,44 @@ static void test_memory_span_zero_and_all_boundaries() {
     assert(caught);
 }
 
+static void test_dynamic_array_uses_unique_array_ownership() {
+    assert(Tracked::alive == 0);
+    {
+        DynamicArray<Tracked> values;
+        for (int i = 0; i < 9; ++i)
+            values.Append(Tracked(i));
+        assert(values.GetSize() == 9 && values.GetCapacity() >= 9);
+        assert(values[0].value == 0 && values[8].value == 8);
+
+        DynamicArray<Tracked> copied(values);
+        assert(copied.GetSize() == 9 && copied[4].value == 4);
+
+        DynamicArray<Tracked> moved(std::move(copied));
+        assert(copied.GetSize() == 0 && moved.GetSize() == 9);
+
+        DynamicArray<Tracked> assigned;
+        assigned = values;
+        assert(assigned.GetSize() == 9 && assigned[8].value == 8);
+
+        DynamicArray<Tracked> moveAssigned;
+        moveAssigned = std::move(assigned);
+        assert(assigned.GetSize() == 0 && moveAssigned.GetSize() == 9);
+        moveAssigned.Resize(0);
+        assert(moveAssigned.GetSize() == 0);
+    }
+    assert(Tracked::alive == 0);
+
+    {
+        DynamicArray<UnqPtr<Tracked>> owners(2);
+        owners[0] = make_unq<Tracked>(101);
+        owners[1] = make_unq<Tracked>(202);
+        DynamicArray<UnqPtr<Tracked>> moved(std::move(owners));
+        assert(owners.GetSize() == 0);
+        assert(moved[0]->value == 101 && moved[1]->value == 202);
+    }
+    assert(Tracked::alive == 0);
+}
+
 int main() {
     test_unique_lifetime();
     test_unique_empty_release_reset_and_assignment();
@@ -263,6 +301,7 @@ int main() {
     test_shared_multiple_inheritance_adjustment();
     test_memory_span_and_bounds();
     test_memory_span_zero_and_all_boundaries();
+    test_dynamic_array_uses_unique_array_ownership();
     assert(Tracked::alive == 0);
     std::cout << "Memory safety and edge-case tests: OK\n";
 }

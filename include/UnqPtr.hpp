@@ -2,6 +2,7 @@
 
 #include "Exceptions.hpp"
 
+#include <cstddef>
 #include <type_traits>
 #include <utility>
 
@@ -134,3 +135,51 @@ public:
 template <class T, class... Args> UnqPtr<T> make_unq(Args &&...args) {
     return UnqPtr<T>(new T(std::forward<Args>(args)...));
 }
+
+template <class T> class UnqPtr<T[]> {
+    T *data_ = nullptr;
+
+public:
+    UnqPtr() noexcept = default;
+    explicit UnqPtr(T *data) noexcept : data_(data) {}
+
+    ~UnqPtr() {
+        delete[] data_;
+    }
+
+    UnqPtr(const UnqPtr &) = delete;
+    UnqPtr &operator=(const UnqPtr &) = delete;
+
+    UnqPtr(UnqPtr &&other) noexcept : data_(std::exchange(other.data_, nullptr)) {}
+
+    UnqPtr &operator=(UnqPtr &&other) noexcept {
+        if (this != &other) {
+            delete[] data_;
+            data_ = std::exchange(other.data_, nullptr);
+        }
+        return *this;
+    }
+
+    T *get() const noexcept {
+        return data_;
+    }
+
+    T &operator[](std::size_t index) const noexcept {
+        return data_[index];
+    }
+
+    explicit operator bool() const noexcept {
+        return data_ != nullptr;
+    }
+
+    T *release() noexcept {
+        return std::exchange(data_, nullptr);
+    }
+
+    void reset(T *data = nullptr) noexcept {
+        if (data_ != data) {
+            delete[] data_;
+            data_ = data;
+        }
+    }
+};
