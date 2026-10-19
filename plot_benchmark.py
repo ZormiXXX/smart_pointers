@@ -31,14 +31,14 @@ for axis, column, title in plots:
 memory_axis = axes[1, 1]
 for method in methods:
     values = {
-        int(row["N"]): int(row["peak_requested_bytes"])
+        int(row["N"]): int(row["peak_usable_bytes"])
         for row in rows
         if row["method"] == method
     }
     memory_axis.plot(sizes, [values[size] for size in sizes], marker="o", label=method)
 memory_axis.set_xscale("log")
 memory_axis.set_yscale("log")
-memory_axis.set_title("Пиковые запросы памяти, байт")
+memory_axis.set_title("Пиковый полезный размер блоков, байт")
 memory_axis.set_xlabel("Количество объектов")
 memory_axis.grid(True, which="both", alpha=0.3)
 
