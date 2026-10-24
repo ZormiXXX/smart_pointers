@@ -3,60 +3,53 @@ CPPFLAGS += -Iinclude
 CXXFLAGS ?= -std=c++20 -Wall -Wextra -Wpedantic -O2
 LDFLAGS ?=
 
-# Command Line Tools on this Mac ship a malformed 27.0 SDK; prefer the working 26.5 SDK.
 ifeq ($(shell uname -s),Darwin)
-SDKROOT ?= $(shell if [ -d /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk ]; then echo /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk; fi)
-ifneq ($(strip $(SDKROOT)),)
+SDKROOT ?= $(shell test -d /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk && echo /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk)
 export SDKROOT
 endif
-endif
 
-BUILD_DIR := build
-PROGRAM := $(BUILD_DIR)/hw1
-TEST_PROGRAM := $(BUILD_DIR)/tests
-SANITIZER_FLAGS := -fsanitize=address,undefined -fno-omit-frame-pointer -g
+BUILD := build
+APP := $(BUILD)/hw1
+TESTS := $(BUILD)/tests
+SOURCES := $(wildcard src/*.cpp)
+HEADERS := $(wildcard include/*.hpp include/*.tpp)
+SANITIZERS := -fsanitize=address,undefined -fno-omit-frame-pointer -g
+TEST_FLAGS := -std=c++20 -Wall -Wextra -Wpedantic $(SANITIZERS)
 
-.PHONY: all run test benchmark sanitize graph sources-txt clean help
+.PHONY: all run test sanitize benchmark graph clean help
 
-all: $(PROGRAM)
+all: $(APP)
 
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
+$(BUILD):
+	mkdir -p $@
 
-HEADERS := $(wildcard include/*.hpp) $(wildcard include/*.tpp)
-APP_SOURCES := src/main.cpp src/ui.cpp src/benchmark.cpp src/functional_tests.cpp
-TEST_SOURCES := tests/tests.cpp src/functional_tests.cpp
+$(APP): $(SOURCES) $(HEADERS) | $(BUILD)
+	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(SOURCES) -o $@ $(LDFLAGS)
 
-$(PROGRAM): $(APP_SOURCES) $(HEADERS) | $(BUILD_DIR)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(APP_SOURCES) -o $@ $(LDFLAGS)
+$(TESTS): tests/tests.cpp src/functional_tests.cpp $(HEADERS) | $(BUILD)
+	$(CXX) $(CPPFLAGS) $(TEST_FLAGS) tests/tests.cpp src/functional_tests.cpp -o $@ $(LDFLAGS) $(SANITIZERS)
 
-$(TEST_PROGRAM): $(TEST_SOURCES) $(HEADERS) | $(BUILD_DIR)
-	$(CXX) $(CPPFLAGS) -std=c++20 -Wall -Wextra -Wpedantic $(SANITIZER_FLAGS) $(TEST_SOURCES) -o $@ $(LDFLAGS) $(SANITIZER_FLAGS)
+run: $(APP)
+	./$(APP)
 
-run: $(PROGRAM)
-	./$(PROGRAM)
+test: $(APP)
+	./$(APP) --test
 
-test: $(PROGRAM)
-	./$(PROGRAM) --test
+benchmark: $(APP)
+	./$(APP) --benchmark
 
-benchmark: $(PROGRAM)
-	./$(PROGRAM) --benchmark
-
-sanitize: $(TEST_PROGRAM)
+sanitize: $(TESTS)
 ifeq ($(shell uname -s),Darwin)
-	ASAN_OPTIONS=detect_leaks=0 ./$(TEST_PROGRAM)
+	ASAN_OPTIONS=detect_leaks=0 ./$(TESTS)
 else
-	ASAN_OPTIONS=detect_leaks=1 ./$(TEST_PROGRAM)
+	ASAN_OPTIONS=detect_leaks=1 ./$(TESTS)
 endif
 
 graph:
 	python3 plot_benchmark.py
 
-sources-txt:
-	python3 export_sources.py
-
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(BUILD)
 
 help:
-	@echo "Targets: all, run, test, benchmark, sanitize, graph, clean"
+	@echo "Targets: all, run, test, sanitize, benchmark, graph, clean"
