@@ -142,7 +142,7 @@ template <class T> class UnqPtr<T[]> {
 public:
     UnqPtr() noexcept = default;
 
-    template <class U> requires std::is_same_v<U, T>
+    template <class U, std::enable_if_t<std::is_same_v<U, T>, int> = 0>
     explicit UnqPtr(U *data) noexcept : data_(data) {}
 
     ~UnqPtr() {
@@ -183,7 +183,7 @@ public:
         data_ = nullptr;
     }
 
-    template <class U> requires std::is_same_v<U, T>
+    template <class U, std::enable_if_t<std::is_same_v<U, T>, int> = 0>
     void reset(U *data) noexcept {
         if (data_ != data) {
             delete[] data_;

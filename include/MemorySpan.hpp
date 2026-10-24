@@ -5,7 +5,6 @@
 #include "ShrdPtr.hpp"
 
 #include <cstddef>
-#include <compare>
 #include <limits>
 
 template <class T> class MemorySpan;
@@ -49,10 +48,24 @@ public:
         return !(*this == other);
     }
 
-    std::strong_ordering operator<=>(const MsPtr &other) const {
+    bool operator<(const MsPtr &other) const {
+        check_same_owner(other);
+        return index_ < other.index_;
+    }
+    bool operator>(const MsPtr &other) const {
+        return other < *this;
+    }
+    bool operator<=(const MsPtr &other) const {
+        return !(*this > other);
+    }
+    bool operator>=(const MsPtr &other) const {
+        return !(*this < other);
+    }
+
+private:
+    void check_same_owner(const MsPtr &other) const {
         if (owner_ != other.owner_)
             throw InvalidArgument("cannot order MsPtr values from different MemorySpan objects");
-        return index_ <=> other.index_;
     }
 };
 

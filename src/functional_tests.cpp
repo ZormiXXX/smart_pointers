@@ -1,7 +1,7 @@
 #include "functional_tests.hpp"
 #include "smart_pointers.hpp"
 
-#include <cassert>
+#include <exception>
 #include <iostream>
 #include <utility>
 
@@ -41,16 +41,50 @@ struct MultiDerived : OtherBase, Base {
     }
 };
 
-} // namespace
+struct TestFailure {};
+
+#define CHECK(condition)                                                                          \
+    do {                                                                                          \
+        if (!(condition))                                                                         \
+            throw TestFailure{};                                                                  \
+    } while (false)
+
+template <class Test>
+bool run_test(const char *name, Test test) {
+    try {
+        test();
+        std::cout << "  [УСПЕХ] " << name << '\n';
+        return true;
+    } catch (const TestFailure &) {
+        std::cout << "  [ОШИБКА] " << name << " — проверка не пройдена\n";
+    } catch (const std::exception &error) {
+        std::cout << "  [ОШИБКА] " << name << " — исключение: " << error.what() << '\n';
+    } catch (...) {
+        std::cout << "  [ОШИБКА] " << name << " — неизвестное исключение\n";
+    }
+    return false;
+}
+
+}
 
 void run_functional_tests() {
-    {
+    std::cout << "\nФункциональные тесты:\n";
+    int passed = 0;
+    int failed = 0;
+    const auto run = [&](const char *name, auto test) {
+        if (run_test(name, test))
+            ++passed;
+        else
+            ++failed;
+    };
+
+    run("DynamicArray: доступ и проверка границ", [] {
         DynamicArray<int> values(3);
         values[0] = 4;
         values[1] = 8;
         values[2] = 12;
-        assert(values.GetSize() == 3);
-        assert(values.Get(0) == 4 && values.Get(2) == 12);
+        CHECK(values.GetSize() == 3);
+        CHECK(values.Get(0) == 4 && values.Get(2) == 12);
 
         bool caught = false;
         try {
@@ -58,60 +92,65 @@ void run_functional_tests() {
         } catch (const IndexOutOfRange &) {
             caught = true;
         }
-        assert(caught);
-    }
+        CHECK(caught);
+    });
 
-    {
+    run("UnqPtr → ShrdPtr: передача владения и счётчик", [] {
         auto owner = make_unq<Item>(42);
-        assert(owner->value() == 42);
+        CHECK(owner->value() == 42);
 
         ShrdPtr<Item> first(std::move(owner));
-        assert(!owner);
-        assert(first.use_count() == 1);
+        CHECK(!owner);
+        CHECK(first.use_count() == 1);
         {
             auto second = first;
-            assert(second.use_count() == 2);
+            CHECK(second.use_count() == 2);
         }
-        assert(first.use_count() == 1);
-        assert(first->value() == 42);
-    }
-    assert(Item::alive == 0);
+        CHECK(first.use_count() == 1);
+        CHECK(first->value() == 42);
+        first.reset();
+        CHECK(Item::alive == 0);
+    });
 
-    {
+    run("UnqPtr: преобразование производного типа к базовому", [] {
         auto derived = make_unq<MultiDerived>();
         UnqPtr<Base> base(std::move(derived));
-        assert(base->value() == 99);
-        assert(dynamic_cast<MultiDerived *>(base.get()) != nullptr);
-    }
+        CHECK(base->value() == 99);
+        CHECK(dynamic_cast<MultiDerived *>(base.get()) != nullptr);
+    });
 
-    {
+    run("ShrdPtr: преобразование при множественном наследовании", [] {
         ShrdPtr<MultiDerived> derived(make_unq<MultiDerived>());
         ShrdPtr<Base> base(derived);
         derived.reset();
-        assert(base->value() == 99);
-    }
+        CHECK(base->value() == 99);
+    });
 
-    {
+    run("MemorySpan / MsPtr: арифметика и копирование значений", [] {
         MemorySpan<int> span(3);
         span.at(0) = 10;
         span.at(1) = 20;
         auto begin = span.Locate(0);
         auto next = begin + 1;
-        assert(*begin == 10 && *next == 20 && next - begin == 1);
+        CHECK(*begin == 10 && *next == 20 && next - begin == 1);
 
         auto valueCopy = span.Get(1);
         auto sharedCopy = span.Copy(2);
-        assert(*valueCopy == 20 && *sharedCopy == 0);
-    }
+        CHECK(*valueCopy == 20 && *sharedCopy == 0);
+    });
 
-    bool caught = false;
-    try {
-        MemorySpan<int> span(2);
-        (void)span.Locate(2);
-    } catch (const IndexOutOfRange &) {
-        caught = true;
-    }
-    assert(caught);
-    assert(Item::alive == 0);
-    std::cout << "Функциональные тесты пройдены.\n";
+    run("MemorySpan: отказ при обращении за границы", [] {
+        bool caught = false;
+        try {
+            MemorySpan<int> span(2);
+            (void)span.Locate(2);
+        } catch (const IndexOutOfRange &) {
+            caught = true;
+        }
+        CHECK(caught);
+    });
+
+    run("Item: все тестовые объекты освобождены", [] { CHECK(Item::alive == 0); });
+
+    std::cout << "Итого: " << passed << " пройдено, " << failed << " с ошибкой.\n";
 }
